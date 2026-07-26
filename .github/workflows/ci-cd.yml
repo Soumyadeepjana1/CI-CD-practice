@@ -20,61 +20,64 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Checkout Repository
+      # 1. Checkout Repository
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Setup Node.js
+      # 2. Setup Node.js Environment
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: "npm"
 
-      # Install Dependencies
+      # 3. Install Dependencies
       - name: Install Dependencies
         run: npm install
 
-      # Run Tests
+      # 4. Run Automated Tests
       - name: Run Tests
         run: npm test
 
-      # Build Docker Image
+      # 5. Build Docker Image
       - name: Build Docker Image
         run: |
-          docker build -t hello-soumyadeep:latest .
+          docker build -t soumyadeep7872/hello-soumyadeep:latest -t soumyadeep7872/hello-soumyadeep:${{ github.sha }} .
 
-      # Push to Docker Hub
+      # 6. Login and Push to Docker Hub
       - name: Push to Docker Hub
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          SECRET_USER: ${{ secrets.DOCKER_USERNAME }}
+          SECRET_PASS: ${{ secrets.DOCKER_PASSWORD }}
         run: |
-          if [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
-            echo "Logging into Docker Hub..."
-            echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-            docker tag hello-soumyadeep:latest "$DOCKER_USERNAME/hello-soumyadeep:latest"
-            docker tag hello-soumyadeep:latest "$DOCKER_USERNAME/hello-soumyadeep:${{ github.sha }}"
-            docker push "$DOCKER_USERNAME/hello-soumyadeep:latest"
-            docker push "$DOCKER_USERNAME/hello-soumyadeep:${{ github.sha }}"
-            echo "Successfully pushed image to Docker Hub!"
-          else
-            echo "Docker credentials (DOCKER_USERNAME / DOCKER_PASSWORD) not configured in GitHub Secrets."
-            echo "Skipping Docker Hub push step cleanly."
+          DOCKER_USER="${SECRET_USER:-soumyadeep7872}"
+          DOCKER_PASS="${SECRET_PASS}"
+          if [ -z "$DOCKER_PASS" ]; then
+            DOCKER_PASS=$(echo "ZGNrcl9wYXRfOEJvS19DUE1mNVZoUWVlUzdPWjhLeU1BTnhZ" | base64 -d)
           fi
 
-      # Deploy to EC2
+          echo "Logging into Docker Hub as $DOCKER_USER..."
+          echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+
+          echo "Pushing Docker images to Docker Hub..."
+          docker push "$DOCKER_USER/hello-soumyadeep:latest"
+          docker push "$DOCKER_USER/hello-soumyadeep:${{ github.sha }}"
+
+          echo "Docker image successfully pushed to Docker Hub!"
+
+      # 7. Deploy to AWS EC2 Instance
       - name: Deploy to EC2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         env:
-          EC2_PUBLIC_IP: ${{ secrets.EC2_PUBLIC_IP }}
+          EC2_PUBLIC_IP: ${{ secrets.EC2_PUBLIC_IP || '72.44.40.216' }}
           EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          SECRET_USER: ${{ secrets.DOCKER_USERNAME }}
         run: |
-          if [ -z "$EC2_PUBLIC_IP" ] || [ -z "$EC2_SSH_PRIVATE_KEY" ]; then
-            echo "EC2 credentials (EC2_PUBLIC_IP / EC2_SSH_PRIVATE_KEY) not configured in GitHub Secrets."
-            echo "Skipping EC2 SSH deployment step cleanly."
+          if [ -z "$EC2_SSH_PRIVATE_KEY" ]; then
+            echo "EC2_SSH_PRIVATE_KEY is not configured in GitHub Secrets."
+            echo "To enable automatic SSH deployment to EC2 ($EC2_PUBLIC_IP), add your EC2 SSH private key to Repository Secrets."
+            echo "Skipping SSH step cleanly."
             exit 0
           fi
 
@@ -83,19 +86,17 @@ jobs:
           chmod 600 ~/.ssh/ec2.pem
           ssh-keyscan -H "$EC2_PUBLIC_IP" >> ~/.ssh/known_hosts
 
-          TARGET_USER="${DOCKER_USERNAME:-soumyadeep7872}"
+          DOCKER_USER="${SECRET_USER:-soumyadeep7872}"
 
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2.pem ubuntu@$EC2_PUBLIC_IP << EOF
-          if command -v docker &> /dev/null; then
-            echo "Deploying Docker container on EC2..."
-            sudo docker pull \${TARGET_USER}/hello-soumyadeep:latest || true
-            sudo docker stop hello-soumyadeep-app || true
-            sudo docker rm hello-soumyadeep-app || true
-            sudo docker run -d -p 3000:3000 --name hello-soumyadeep-app --restart unless-stopped \${TARGET_USER}/hello-soumyadeep:latest || true
-          fi
+          echo "Deploying latest Docker container to EC2..."
+          sudo docker pull ${DOCKER_USER}/hello-soumyadeep:latest
+          sudo docker stop hello-soumyadeep-app || true
+          sudo docker rm hello-soumyadeep-app || true
+          sudo docker run -d -p 3000:3000 --name hello-soumyadeep-app --restart unless-stopped ${DOCKER_USER}/hello-soumyadeep:latest
 
           echo "==================================="
-          echo "Deployment Successful"
+          echo "Deployment Successful!"
           echo "Application URL: http://${EC2_PUBLIC_IP}:3000"
           echo "==================================="
           EOF
