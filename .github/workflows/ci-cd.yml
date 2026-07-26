@@ -39,26 +39,33 @@ jobs:
       - name: Login to Docker Hub
         if: |
           github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-          && secrets.DOCKER_USERNAME != ''
-          && secrets.DOCKER_PASSWORD != ''
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          if [ -z "$DOCKER_USERNAME" ] || [ -z "$DOCKER_PASSWORD" ]; then
+            echo "Docker credentials not configured - skipping Docker push"
+            echo "To enable Docker push, add DOCKER_USERNAME and DOCKER_PASSWORD secrets"
+            exit 0
+          fi
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 
       # Build & Push Docker Image
       - name: Build and Push Docker Image
         if: |
           github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-          && secrets.DOCKER_USERNAME != ''
-          && secrets.DOCKER_PASSWORD != ''
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/hello-soumyadeep:latest
-            ${{ secrets.DOCKER_USERNAME }}/hello-soumyadeep:${{ github.sha }}
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          if [ -z "$DOCKER_USERNAME" ] || [ -z "$DOCKER_PASSWORD" ]; then
+            echo "Docker credentials not configured - skipping Docker push"
+            exit 0
+          fi
+          docker build -t $DOCKER_USERNAME/hello-soumyadeep:latest .
+          docker build -t $DOCKER_USERNAME/hello-soumyadeep:${{ github.sha }} .
+          docker push $DOCKER_USERNAME/hello-soumyadeep:latest
+          docker push $DOCKER_USERNAME/hello-soumyadeep:${{ github.sha }}
 
       # Deploy to EC2
       - name: Deploy to EC2
