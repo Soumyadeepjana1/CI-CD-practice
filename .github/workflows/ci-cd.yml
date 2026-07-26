@@ -51,7 +51,7 @@ jobs:
             echo "has_creds=true" >> $GITHUB_OUTPUT
           else
             echo "has_creds=false" >> $GITHUB_OUTPUT
-            echo "::warning::Docker credentials (DOCKER_USERNAME / DOCKER_PASSWORD) not configured in GitHub Secrets. Skipping Docker login and push."
+            echo "::warning::Docker credentials (DOCKER_USERNAME / DOCKER_PASSWORD) are not set in GitHub Repository Secrets. Go to Repository Settings -> Secrets and variables -> Actions to add them."
           fi
 
       # Login to Docker Hub
