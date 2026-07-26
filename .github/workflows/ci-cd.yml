@@ -56,4 +56,8 @@ jobs:
           sudo docker stop hello-soumyadeep-app 2>/dev/null || true
           sudo docker rm hello-soumyadeep-app 2>/dev/null || true
           sudo docker run -d -p 3000:3000 --name hello-soumyadeep-app --restart unless-stopped ${{ secrets.DOCKER_USERNAME }}/hello-soumyadeep:latest
+          echo "Deployment completed on EC2 instance"
+          echo "Public IP: 72.44.40.216"
+          echo "Private IP: 172.31.34.110"
+          echo "Public DNS: ec2-72-44-40-216.compute-1.amazonaws.com"
         EOF
