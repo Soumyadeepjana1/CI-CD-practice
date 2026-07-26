@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    image: soumyadeep7872/hello-soumyadeep:latest
+    container_name: hello-soumyadeep-app
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
