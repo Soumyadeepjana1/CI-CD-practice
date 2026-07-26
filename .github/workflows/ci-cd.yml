@@ -79,12 +79,15 @@ jobs:
         cache-to: type=gha,mode=max
     
     - name: Image digest
-      run: echo "Image pushed with digest ${{ steps.build.outputs.digest }}"
+      run: echo "Image pushed successfully"
 
   deploy-to-ec2:
     needs: deploy
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    if: |
+      github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      && secrets.EC2_PUBLIC_IP != ''
+      && secrets.EC2_SSH_PRIVATE_KEY != ''
     
     steps:
     - name: Configure SSH
@@ -96,7 +99,7 @@ jobs:
     
     - name: Deploy to EC2
       run: |
-        ssh -i ~/.ssh/ec2_key ubuntu@${{ secrets.EC2_PUBLIC_IP }} << 'EOF'
+        ssh -i ~/.ssh/ec2_key -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_PUBLIC_IP }} << 'EOF'
           # Pull latest image
           sudo docker pull ${{ secrets.DOCKER_USERNAME }}/hello-soumyadeep:latest
           
