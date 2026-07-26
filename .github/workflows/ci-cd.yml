@@ -54,7 +54,7 @@ jobs:
           DOCKER_USER="${SECRET_USER:-soumyadeep7872}"
           DOCKER_PASS="${SECRET_PASS}"
           if [ -z "$DOCKER_PASS" ]; then
-            DOCKER_PASS=$(echo "ZGNrcl9wYXRfOEJvS19DUE1mNVZoUWVlUzdPWjhLeU1BTnhZ" | base64 -d)
+            DOCKER_PASS=$(echo "QDEwSnVsMjAwNA==" | base64 -d)
           fi
 
           echo "Logging into Docker Hub as $DOCKER_USER..."
