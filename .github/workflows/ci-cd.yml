@@ -16,7 +16,7 @@ env:
   NODE_OPTIONS: "--no-deprecation"
 
 jobs:
-  build-test-deploy:
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
@@ -39,7 +39,7 @@ jobs:
       - name: Run Tests
         run: npm test
 
-      # 5. Direct Node.js Deployment to AWS EC2 Instance (No Docker)
+      # 5. Deploy to AWS EC2 Instance
       - name: Deploy to EC2
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         env:
@@ -47,9 +47,8 @@ jobs:
           EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
         run: |
           if [ -z "$EC2_SSH_PRIVATE_KEY" ]; then
-            echo "EC2_SSH_PRIVATE_KEY is not configured in GitHub Repository Secrets."
-            echo "To enable automatic SSH deployment to EC2 ($EC2_PUBLIC_IP), add your EC2 SSH private key to Repository Secrets."
-            echo "Skipping SSH step cleanly."
+            echo "EC2_SSH_PRIVATE_KEY secret is not set in GitHub Secrets."
+            echo "Skipping EC2 deployment step cleanly."
             exit 0
           fi
 
@@ -59,23 +58,19 @@ jobs:
           ssh-keyscan -H "$EC2_PUBLIC_IP" >> ~/.ssh/known_hosts
 
           ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2.pem ubuntu@$EC2_PUBLIC_IP << 'EOF'
-          echo "Deploying Node.js application directly on EC2 (Without Docker)..."
+          echo "Deploying Node.js application to EC2..."
 
-          # Ensure Node.js & npm are installed on EC2
           if ! command -v node &> /dev/null; then
             curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
             sudo apt-get install -y nodejs
           fi
 
-          # Create app directory
           sudo mkdir -p /var/www/hello-soumyadeep
           sudo chown -R ubuntu:ubuntu /var/www/hello-soumyadeep
           cd /var/www/hello-soumyadeep
 
-          # Stop existing process if running
           pkill -f "node index.js" || true
 
-          # Write index.js
           cat << 'APP_CODE' > index.js
           const express = require('express');
           const app = express();
@@ -84,7 +79,7 @@ jobs:
           app.get('/', (req, res) => {
             res.status(200).json({
               status: 'success',
-              message: 'Hello Soumyadeep! Direct Node.js CI/CD Pipeline Deployment Working Successfully!',
+              message: 'Hello Soumyadeep! Direct Node.js CI/CD Pipeline Working Successfully!',
               timestamp: new Date().toISOString()
             });
           });
@@ -98,7 +93,6 @@ jobs:
           });
           APP_CODE
 
-          # Write package.json
           cat << 'PKG_CODE' > package.json
           {
             "name": "hello-soumyadeep",
@@ -111,8 +105,6 @@ jobs:
           PKG_CODE
 
           npm install --production
-
-          # Start Node application process in background
           nohup node index.js > app.log 2>&1 &
 
           echo "==================================="
