@@ -11,6 +11,10 @@ on:
       - main
       - master
 
+env:
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
+  NODE_OPTIONS: "--no-deprecation"
+
 jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
@@ -24,10 +28,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "20"
           cache: "npm"
 
-      # Install Dependencies hello
+      # Install Dependencies
       - name: Install Dependencies
         run: npm install
 
@@ -35,42 +39,90 @@ jobs:
       - name: Run Tests
         run: npm test
 
+      # Check Docker Credentials
+      - name: Check Docker Credentials
+        id: check-docker-creds
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          if [ -n "$DOCKER_USERNAME" ] && [ -n "$DOCKER_PASSWORD" ]; then
+            echo "has_creds=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_creds=false" >> $GITHUB_OUTPUT
+            echo "::warning::Docker credentials (DOCKER_USERNAME / DOCKER_PASSWORD) not configured in GitHub Secrets. Skipping Docker login and push."
+          fi
+
+      # Login to Docker Hub
+      - name: Login to Docker Hub
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && steps.check-docker-creds.outputs.has_creds == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # Set up Docker Buildx
+      - name: Set up Docker Buildx
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && steps.check-docker-creds.outputs.has_creds == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      # Build and Push Docker Image
+      - name: Build and Push Docker Image
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && steps.check-docker-creds.outputs.has_creds == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/hello-soumyadeep:latest
+            ${{ secrets.DOCKER_USERNAME }}/hello-soumyadeep:${{ github.sha }}
+
+      # Check EC2 Credentials
+      - name: Check EC2 Credentials
+        id: check-ec2-creds
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+        env:
+          EC2_PUBLIC_IP: ${{ secrets.EC2_PUBLIC_IP }}
+          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        run: |
+          if [ -n "$EC2_PUBLIC_IP" ] && [ -n "$EC2_SSH_PRIVATE_KEY" ]; then
+            echo "has_ec2_creds=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_ec2_creds=false" >> $GITHUB_OUTPUT
+            echo "::warning::EC2 secrets (EC2_PUBLIC_IP / EC2_SSH_PRIVATE_KEY) not configured in GitHub Secrets. Skipping EC2 deployment."
+          fi
+
       # Deploy to EC2
       - name: Deploy to EC2
-        if: |
-          github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-          && secrets.EC2_PUBLIC_IP != ''
-          && secrets.EC2_SSH_PRIVATE_KEY != ''
+        if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && steps.check-ec2-creds.outputs.has_ec2_creds == 'true'
         env:
           HOST: ${{ secrets.EC2_PUBLIC_IP }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          HAS_DOCKER_CREDS: ${{ steps.check-docker-creds.outputs.has_creds }}
         run: |
-
           mkdir -p ~/.ssh
-
           printf '%s\n' "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/ec2.pem
-
           chmod 600 ~/.ssh/ec2.pem
-
           ssh-keyscan -H $HOST >> ~/.ssh/known_hosts
 
           ssh -i ~/.ssh/ec2.pem ubuntu@$HOST << EOF
-
-          # Install Node.js if not present
-          if ! command -v node &> /dev/null
-          then
-            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-            sudo apt-get install -y nodejs
-          fi
-
-          # Install npm and express
-          sudo npm install -g express
-
-          # Create application directory
-          sudo mkdir -p /app
-          cd /app
-
-          # Create the application file
-          sudo tee index.js > /dev/null << 'EOL'
+          if [ "$HAS_DOCKER_CREDS" = "true" ]; then
+            echo "Deploying via Docker Container..."
+            sudo docker pull ${DOCKER_USERNAME}/hello-soumyadeep:latest
+            sudo docker stop hello-soumyadeep-app || true
+            sudo docker rm hello-soumyadeep-app || true
+            sudo docker run -d -p 3000:3000 --name hello-soumyadeep-app --restart unless-stopped ${DOCKER_USERNAME}/hello-soumyadeep:latest
+          else
+            echo "Deploying via direct Node.js process..."
+            if ! command -v node &> /dev/null; then
+              curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+              sudo apt-get install -y nodejs
+            fi
+            sudo npm install -g express
+            sudo mkdir -p /app
+            cd /app
+            sudo tee index.js > /dev/null << 'EOL'
           const express = require('express');
           const app = express();
           app.get('/', (req, res) => {
@@ -80,17 +132,12 @@ jobs:
             console.log('Server running on port 3000');
           });
           EOL
-
-          # Stop existing process if running
-          pkill -f "node index.js" || true
-
-          # Start the application in background
-          nohup sudo node index.js > /app/app.log 2>&1 &
+            pkill -f "node index.js" || true
+            nohup sudo node index.js > /app/app.log 2>&1 &
+          fi
 
           echo "==================================="
           echo "Deployment Successful"
-          echo "Application URL:"
-          echo "http://72.44.40.216:3000"
+          echo "Application URL: http://${HOST}:3000"
           echo "==================================="
-
           EOF
