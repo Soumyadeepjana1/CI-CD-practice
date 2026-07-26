@@ -4,7 +4,8 @@
   "description": "A simple Node.js project that displays hello soumyadeep",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "echo \"No tests specified\" && exit 0"
   },
   "keywords": [],
   "author": "",
