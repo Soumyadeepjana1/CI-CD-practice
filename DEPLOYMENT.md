@@ -7,8 +7,8 @@ This project automatically deploys to EC2 via GitHub Actions when code is pushed
 Add these secrets in your GitHub repository settings (Settings → Secrets and variables → Actions):
 
 ### Docker Hub Secrets
-- `DOCKER_USERNAME` - Your Docker Hub username
-- `DOCKER_PASSWORD` - Your Docker Hub password or access token
+- `DOCKER_USERNAME` - `soumyadeep7872`
+- `DOCKER_PASSWORD` - Your Docker Hub access token
 
 ### EC2 Secrets
 - `EC2_PUBLIC_IP` - Your EC2 public IP address: `72.44.40.216`
