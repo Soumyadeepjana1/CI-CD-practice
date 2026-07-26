@@ -27,7 +27,7 @@ jobs:
           node-version: "24"
           cache: "npm"
 
-      # Install Dependencies
+      # Install Dependencies hello
       - name: Install Dependencies
         run: npm install
 
